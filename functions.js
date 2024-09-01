@@ -46,20 +46,66 @@ function toggleFieldsBasedOnFormType(executionContext) {
     
 }
 
+async function calculateTotalPriceOfInventory(executionContext) {
+    const Form = executionContext.getFormContext();
+	const inventoryId = Form.data.entity.getId();
 
+    let fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">' +
+        '<entity name="cr4fd_inventory_product">' +
+        '<attribute name="cr4fd_inventory_productid"/>' +
+        '<attribute name="cr4fd_name"/>' +
+        '<attribute name="cr4fd_int_quantity"/>' +
+        '<attribute name="cr4fd_fk_product"/>' +
+		'<order attribute="cr4fd_name" descending="false"/>' +
+		'<filter type="and">' +
+            '<condition attribute="cr4fd_fk_inventory" operator="eq" uitype="cr4fd_inventory" value="' + inventoryId + '" />' +
+        '</filter>' +
+        '</entity>' +
+        '</fetch>';
+    fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
 
-async function calculateTotalPriceOfInventory (executionContext) {
-	const Form = executionContext.getFormContext();
-	const recordId = Form.data.entity.getId();
-	let fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">'+
-	'<entity name="cr4fd_inventory_product">'+
-	'<attribute name="cr4fd_inventory_productid"/>'+
-	'<attribute name="cr4fd_name"/>'+
-	'<attribute name="cr4fd_name"/>'+
-	'<attribute name="cr4fd_name"/>'+
+    try {
+        const inventoryLinesArray = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
+        const inventoryLinesQuantity = inventoryLinesArray.entities.length;
+        const priceList = Form.getAttribute("cr4fd_fk_price_list").getValue();
 
-	'<attribute name="createdon"/>'+
-	'<order attribute="cr4fd_name" descending="false"/>'+
-	'</entity>'+
-	'</fetch>'
+        let inventoryLine, productId, quantity = 0, totalPrice = 0;
+
+        if (priceList && priceList[0]) {
+            const priceListId = priceList[0].id;
+            for (let i = 0; i < inventoryLinesQuantity; i++) {
+                inventoryLine = inventoryLinesArray.entities[i];
+                quantity = parseFloat(inventoryLine["cr4fd_int_quantity"]) || 0;
+
+                productId = inventoryLine["_cr4fd_fk_product_value"];
+                
+                fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">' +
+                    '<entity name="cr4fd_price_list_items">' +
+                    '<attribute name="cr4fd_price_list_itemsid" />' +
+                    '<attribute name="cr4fd_name" />' +
+					'<attribute name="cr4fd_mon_price" />' +
+                    '<filter type="and">' +
+                    '<condition attribute="cr4fd_fk_product" operator="eq" uitype="cr4fd_product" value="' + productId + '" />' +
+                    '<condition attribute="cr4fd_fk_price_list" operator="eq" uitype="cr4fd_price_list" value="' + priceListId + '" />' +
+                    '</filter>' +
+                    '<order attribute="cr4fd_name" descending="false"/>' +
+                    '</entity>' +
+                    '</fetch>';
+                fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
+                let priceListLinesArray = await Xrm.WebApi.retrieveMultipleRecords("cr4fd_price_list_items", fetchXml);
+                let price = 0;
+
+                if (priceListLinesArray && priceListLinesArray.entities) {
+                    for (let j = 0; j < priceListLinesArray.entities.length; j++) {
+                        price = parseFloat(priceListLinesArray.entities[0]["cr4fd_mon_price"]);
+                        totalPrice += price * quantity;
+                    }
+                } else {
+                    console.warn("An error occurred while fetching Price List Lines.");
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error calculating total price of inventory:", error);
+    }
 }
