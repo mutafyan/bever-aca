@@ -73,8 +73,7 @@ async function calculateTotalPriceOfInventory(executionContext) {
     try {
         const inventoryLinesArray = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
         const inventoryLinesQuantity = inventoryLinesArray.entities.length;
-        const priceList = Form.getAttribute("cr4fd_fk_price_list").getValue();
-		const priceListId = priceList[0].id;
+        const priceListId  = Form.getAttribute("cr4fd_fk_price_list").getValue()[0]?.id;;
 		let totalPrice = 0, quantity=0, price=0, line;
         for(let i=0; i < inventoryLinesQuantity; i++) {
 			line = inventoryLinesArray.entities[i];
@@ -92,4 +91,34 @@ async function calculateTotalPriceOfInventory(executionContext) {
     }
 }
 
+function autofillName(executionContext) {
+	const Form = executionContext.getFormContext();
+	const productName = Form.getAttribute("cr4fd_fk_product").getValue()[0]?.name;
+	Form.getAttribute("cr4fd_name").setValue(productName);
+}
 
+async function autofillCurrency(executionContext) {
+    const Form = executionContext.getFormContext();
+    const priceListField = Form.getAttribute("cr4fd_fk_price_list");
+    const currencyField = Form.getAttribute("transactioncurrencyid");
+
+    if (priceListField && priceListField.getValue()) {
+        const priceListId = priceListField.getValue()[0].id.replace("{","").replace("}","").toLowerCase();
+        await Xrm.WebApi.retrieveRecord("cr4fd_price_list", priceListId, "?$select=_transactioncurrencyid_value").then(
+			function success(result) {
+				const newCurrency = {
+					id: result["_transactioncurrencyid_value"], 
+					name: result["_transactioncurrencyid_value@OData.Community.Display.V1.FormattedValue"],
+					entityType: "transactioncurrency"
+				};
+				currencyField.setValue([newCurrency]);
+            },
+            function error(error) {
+                console.log("Error retrieving currency from Price List:", error.message);
+            }
+        );
+    } else {
+        // Clear the currency field if no Price List is selected
+        currencyField.setValue(null);
+    }
+}
