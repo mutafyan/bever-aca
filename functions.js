@@ -30,20 +30,39 @@ function totalAmount(executionContext) {
 function toggleFieldsBasedOnFormType(executionContext) {
 	const Form = executionContext.getFormContext();
     let formType = Form.ui.getFormType();
+	const allControls = Form.ui.controls.get();
+	const hideOnCreate = [
+		"cr4fd_name",
+		"transactioncurrencyid",
+		"cr4fd_mon_total_amount",
+		"cr4fd_mon_price_per_unit"
+	]
+    // Iterate over each control
     if(formType === 2) {
-    	Form.getControl("cr4fd_fk_product").setDisabled(true);
-    	Form.getControl("cr4fd_fk_inventory").setDisabled(true);	
-    	Form.getControl("cr4fd_int_quantity").setDisabled(true);		
-    	Form.getControl("cr4fd_mon_price_per_unit").setDisabled(true);	
-    } else if (formType === 1) {
-    	Form.getControl("cr4fd_fk_product").setDisabled(false);
-    	Form.getControl("cr4fd_fk_inventory").setDisabled(false);	
-    	Form.getControl("cr4fd_int_quantity").setDisabled(false);		
-    	Form.getControl("cr4fd_mon_price_per_unit").setDisabled(false);	
-    } else {
-    	// pass
-    }
-    
+		allControls.forEach(function(control) {
+        if (control) {
+            control.setDisabled(true);
+        }
+    	}) 
+	}
+	// Hide unnecesarry fields when creating new record 
+	else if(formType === 1) { 
+		hideOnCreate.forEach(function(fieldName) {
+			const control = Form.getControl(fieldName);
+			if(control){
+				control.setVisible(false);
+			}
+		});
+		// Then disable the remained fields
+		allControls.forEach(function(control) {
+		if (control) {
+            control.setDisabled(false);
+        }
+	}
+	)
+	} else {
+		// pass
+	}
 }
 
 async function calculateTotalPriceOfInventory(executionContext) {
@@ -84,7 +103,6 @@ async function calculateTotalPriceOfInventory(executionContext) {
 			}
 		}
 		Form.getAttribute("cr4fd_mon_total_amount").setValue(totalPrice);
-            
         }
     catch (error) {
         console.error("Error calculating total price of inventory:", error);
@@ -122,3 +140,52 @@ async function autofillCurrency(executionContext) {
         currencyField.setValue(null);
     }
 }
+
+
+async function autofillCurrencyForInventoryProducts(executionContext) {
+	const Form = executionContext.getFormContext();
+	if(Form.ui.getFormType() === 1) {
+		return;
+	}
+	const inventoryId = Form.getAttribute("cr4fd_fk_inventory").getValue()[0]?.id;
+	const productId = Form.getAttribute("cr4fd_fk_product").getValue()[0]?.id;
+    const currencyField = Form.getAttribute("transactioncurrencyid");
+
+	let fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">' +
+        '<entity name="cr4fd_inventory_product">' +
+        '<attribute name="cr4fd_inventory_productid"/>' +
+        '<attribute name="cr4fd_name"/>' +
+        '<attribute name="cr4fd_int_quantity"/>' +
+        '<attribute name="cr4fd_fk_product"/>' +
+		'<order attribute="cr4fd_name" descending="false"/>' +
+		'<filter type="and">' +
+            '<condition attribute="cr4fd_fk_inventory" operator="eq" uitype="cr4fd_inventory" value="' + inventoryId + '" />' +
+			'<condition attribute="cr4fd_fk_product" operator="eq" uitype="cr4fd_product" value="' + productId + '" />' +
+        '</filter>' +
+		'<link-entity name="cr4fd_inventory" from="cr4fd_inventoryid" to="cr4fd_fk_inventory" link-type="inner" alias="al">'+
+			'<link-entity name="cr4fd_price_list" from="cr4fd_price_listid" to="cr4fd_fk_price_list" link-type="inner" alias="am">'+
+				'<attribute name="transactioncurrencyid"/>' +
+			'</link-entity>'+
+		'</link-entity>'+
+        '</entity>' +
+        '</fetch>';
+	    fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
+
+		try {
+			const resultArray = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
+			if(resultArray) {
+				const result = resultArray.entities[0];
+				const currencyObj = {
+					id: result["am.transactioncurrencyid"],
+					name: result["am.transactioncurrencyid@OData.Community.Display.V1.FormattedValue"],
+					entityType: result["am.transactioncurrencyid@Microsoft.Dynamics.CRM.lookuplogicalname"],
+				}
+				currencyField.setValue([currencyObj]);
+			}
+			} catch (error) {
+			alert(error);
+		}
+
+}
+
+
