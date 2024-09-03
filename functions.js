@@ -111,7 +111,10 @@ async function calculateTotalPriceOfInventory(executionContext) {
 
 function autofillName(executionContext) {
 	const Form = executionContext.getFormContext();
-	const productName = Form.getAttribute("cr4fd_fk_product").getValue()[0]?.name;
+	if(Form.ui.getFormType() === 1) {
+		return;
+	}
+	const productName = Form.getAttribute("cr4fd_fk_product")?.getValue()[0]?.name;
 	Form.getAttribute("cr4fd_name").setValue(productName);
 }
 
@@ -183,9 +186,65 @@ async function autofillCurrencyForInventoryProducts(executionContext) {
 				currencyField.setValue([currencyObj]);
 			}
 			} catch (error) {
-			alert(error);
+			console.error(error);
 		}
 
 }
 
 
+
+function setPricePerUnit(executionContext) {
+    const Form = executionContext.getFormContext();
+
+    const productLookup = Form.getAttribute("cr4fd_fk_product").getValue();
+    const inventoryLookup = Form.getAttribute("cr4fd_fk_inventory").getValue();
+
+    if (productLookup && inventoryLookup) {
+        const productId = productLookup[0].id;
+        const inventoryId = inventoryLookup[0].id;
+
+        const fetchXml = '<fetch top="1">' +
+                '<entity name="cr4fd_inventory_product">' +
+                    '<attribute name="cr4fd_inventory_productid"/>' +
+                    '<filter type="and">' +
+                        '<condition attribute="cr4fd_fk_inventory" operator="eq" value="' + inventoryId + '" />' +
+                        '<condition attribute="cr4fd_fk_product" operator="eq" value="' + productId + '" />' +
+                    '</filter>' +
+                    '<link-entity name="cr4fd_inventory" from="cr4fd_inventoryid" to="cr4fd_fk_inventory" link-type="inner" alias="al">' +
+                        '<link-entity name="cr4fd_price_list" from="cr4fd_price_listid" to="cr4fd_fk_price_list" link-type="inner" alias="am">' +
+                            '<link-entity name="cr4fd_price_list_items" from="cr4fd_fk_price_list" to="cr4fd_price_listid" link-type="inner" alias="pli">' +
+                                '<attribute name="cr4fd_mon_price"/>' +
+                                '<filter type="and">' +
+                                    '<condition attribute="cr4fd_fk_product" operator="eq" value="' + productId + '" />' +
+                                '</filter>' +
+                            '</link-entity>' +
+                        '</link-entity>' +
+                    '</link-entity>' +
+                '</entity>' +
+            '</fetch>';
+
+        Xrm.WebApi.retrieveMultipleRecords("cr4fd_inventory_product", "?fetchXml=" + encodeURIComponent(fetchXml)).then(
+            function success(result) {
+                if (result.entities.length > 0 && result.entities[0]["pli.cr4fd_mon_price"] !== undefined) {
+                    const price = result.entities[0]["pli.cr4fd_mon_price"];
+                    Form.getAttribute("cr4fd_mon_price_per_unit").setValue(price);
+                } else {
+                    // If no price in the Price List, retrieve the default price from the Product entity
+                    Xrm.WebApi.retrieveRecord("cr4fd_product", productId, "?$select=cr4fd_mon_unit_price").then(
+                        function success(product) {
+                            if (product.cr4fd_mon_unit_price) {
+                                Form.getAttribute("cr4fd_mon_price_per_unit").setValue(product.cr4fd_mon_unit_price);
+                            }
+                        },
+                        function error(error) {
+                            console.log("Error retrieving default price from Product:", error.message);
+                        }
+                    );
+                }
+            },
+            function error(error) {
+                console.log("Error retrieving price from Price List:", error.message);
+            }
+        );
+    }
+}
