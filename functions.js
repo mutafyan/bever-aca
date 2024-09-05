@@ -37,7 +37,8 @@ function toggleFieldsBasedOnFormType(executionContext) {
 		"cr4fd_mon_total_amount",
 		"cr4fd_mon_price_per_unit"
 	]
-    // Iterate over each control
+	
+    // Iterate over each control and disable
     if(formType === 2) {
 		allControls.forEach(function(control) {
         if (control) {
@@ -47,67 +48,31 @@ function toggleFieldsBasedOnFormType(executionContext) {
 	}
 	// Hide unnecesarry fields when creating new record 
 	else if(formType === 1) { 
+		// enable the fields
+		allControls.forEach(function(control) {
+		if (control) {
+			control.setDisabled(false);
+		}
+		})
+		// disable and hide those that are not neccessary
 		hideOnCreate.forEach(function(fieldName) {
 			const control = Form.getControl(fieldName);
 			if(control){
 				control.setVisible(false);
+				control.setDisabled(true);
 			}
 		});
-		// Then disable the remained fields
-		allControls.forEach(function(control) {
-		if (control) {
-            control.setDisabled(false);
-        }
-	}
-	)
+
+		// disable the product field
+		const product = Form.getControl("cr4fd_fk_product");
+		if(product) {
+			product.setDisabled(true);	
+		}
 	} else {
 		// pass
 	}
 }
 
-async function calculateTotalPriceOfInventory(executionContext) {
-    const Form = executionContext.getFormContext();
-	const inventoryId = Form.data.entity.getId();
-
-    let fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">' +
-        '<entity name="cr4fd_inventory_product">' +
-        '<attribute name="cr4fd_inventory_productid"/>' +
-        '<attribute name="cr4fd_name"/>' +
-        '<attribute name="cr4fd_int_quantity"/>' +
-        '<attribute name="cr4fd_fk_product"/>' +
-		'<order attribute="cr4fd_name" descending="false"/>' +
-		'<filter type="and">' +
-            '<condition attribute="cr4fd_fk_inventory" operator="eq" uitype="cr4fd_inventory" value="' + inventoryId + '" />' +
-        '</filter>' +
-		'<link-entity name="cr4fd_product" from="cr4fd_productid" to="cr4fd_fk_product" link-type="inner" alias="af">'+
-			'<link-entity name="cr4fd_price_list_items" from="cr4fd_fk_product" to="cr4fd_productid" link-type="inner" alias="ak" >'+
-				'<attribute name="cr4fd_mon_price"/>' +
-				'<attribute name="cr4fd_fk_price_list"/>' +
-			'</link-entity>'+
-		'</link-entity>'+
-        '</entity>' +
-        '</fetch>';
-    fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
-
-    try {
-        const inventoryLinesArray = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
-        const inventoryLinesQuantity = inventoryLinesArray.entities.length;
-        const priceListId  = Form.getAttribute("cr4fd_fk_price_list").getValue()[0]?.id;;
-		let totalPrice = 0, quantity=0, price=0, line;
-        for(let i=0; i < inventoryLinesQuantity; i++) {
-			line = inventoryLinesArray.entities[i];
-			if(line["ak.cr4fd_fk_price_list"] === priceListId.replace("{","").replace("}","").toLowerCase()){
-				quantity=line["cr4fd_int_quantity"];
-				price=line["ak.cr4fd_mon_price"];
-				totalPrice += quantity*price;
-			}
-		}
-		Form.getAttribute("cr4fd_mon_total_amount").setValue(totalPrice);
-        }
-    catch (error) {
-        console.error("Error calculating total price of inventory:", error);
-    }
-}
 
 function autofillName(executionContext) {
 	const Form = executionContext.getFormContext();
@@ -247,4 +212,61 @@ function setPricePerUnit(executionContext) {
             }
         );
     }
+}
+
+
+
+async function checkProductAssociation(executionContext) {
+	const formContext = executionContext.getFormContext();
+    const inventory = formContext.getAttribute("cr4fd_fk_inventory").getValue();
+	const product = formContext.getAttribute("cr4fd_fk_product").getValue();
+	if(!inventory || !product) {
+		return;
+	}
+	const productId = product[0]?.id;
+	const inventoryId = inventory[0]?.id;
+	if (productId && inventoryId) {
+		let fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">' +
+		'<entity name="cr4fd_inventory_product">' +
+		'<attribute name="cr4fd_inventory_productid"/>' +
+		'<filter type="and">' +
+		'<condition attribute="cr4fd_fk_product" operator="eq" value="' + productId + '"/>' +
+		'<condition attribute="cr4fd_fk_inventory" operator="eq" value="' + inventoryId + '"/>' +
+		'</filter>' +
+		'</entity>' +
+		'</fetch>';
+		fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
+		try {
+			const result = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
+			
+			if (result.entities.length > 0) {
+				// Product is already associated with the inventory
+				formContext.getControl("cr4fd_fk_product").setNotification("Product is already added", "product_notification");
+			} else {
+				// Clear the notification if no matching product-inventory is found
+				formContext.getControl("cr4fd_fk_product").clearNotification("product_notification");
+			}
+		} catch (error) {
+			console.error("Error checking product association:", error);
+		}
+	}
+	}
+	
+	function enableProductField(executionContext) {
+		const formContext = executionContext.getFormContext();
+		let formType = formContext.ui.getFormType();
+		if(formType === 1) { 
+			productField = formContext.getControl("cr4fd_fk_product");
+			inventoryField = formContext.getAttribute("cr4fd_fk_inventory");
+			if(inventoryField.getValue()) {
+			if(productField) {
+				// Disable if true
+				formContext.getControl("cr4fd_fk_inventory").clearNotification("inventory_notification");
+				productField.setDisabled(false);
+			}
+		} else {
+			formContext.getControl("cr4fd_fk_inventory").setNotification("Choose an inventory", "inventory_notification");
+		}
+		
+	}
 }
