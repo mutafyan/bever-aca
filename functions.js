@@ -13,8 +13,10 @@ function hideBasedOnType (executionContext) {
 	const Form = executionContext.getFormContext();
 	const option = Form.getAttribute("cr4fd_os_type").getSelectedOption().text;
 	if(option && option === "Service") {
-		Form.getControl("cr4fd_mon_unit_price").setVisible(false);	
+		Form.getControl("cr4fd_mon_unit_price").setVisible(false);
+		Form.getControl("cr4fd_mon_price_per_hour").setVisible(true);		
 	} else {
+		Form.getControl("cr4fd_mon_price_per_hour").setVisible(false);		
 		Form.getControl("cr4fd_mon_unit_price").setVisible(true);
 	}
 	
@@ -267,6 +269,5 @@ async function checkProductAssociation(executionContext) {
 		} else {
 			formContext.getControl("cr4fd_fk_inventory").setNotification("Choose an inventory", "inventory_notification");
 		}
-		
 	}
 }

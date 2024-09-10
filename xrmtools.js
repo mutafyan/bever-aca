@@ -80,6 +80,7 @@ async function initPriceList(formContext) {
                 '<attribute name="cr4fd_productid"/>' +
                 '<attribute name="cr4fd_name"/>' +
                 '<attribute name="cr4fd_mon_unit_price"/>' +
+                '<attribute name="cr4fd_mon_price_per_hour"/>' +
             '</entity>' +
         '</fetch>';
 
@@ -90,7 +91,7 @@ async function initPriceList(formContext) {
                 console.log(productResult.entities[i]);
                 const productId = productResult.entities[i].cr4fd_productid;
                 const productName = productResult.entities[i].cr4fd_name;
-                const defaultPrice = productResult.entities[i].cr4fd_mon_unit_price;
+                const defaultPrice = productResult.entities[i].cr4fd_mon_unit_price ? productResult.entities[i].cr4fd_mon_unit_price : productResult.entities[i].cr4fd_mon_price_per_hour;
 
                 // Create new Price List Item with currency from Price List and Default price of product
                 const priceListItemData = {
