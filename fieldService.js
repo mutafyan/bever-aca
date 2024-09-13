@@ -37,34 +37,59 @@ async function autofillAssetName(executionContext) {
 }
 
 
-// Filter contact lookup in work order to show only contacts related to selected account lookup
 let filterPointer = null;
+
 function contactLookupFilter(executionContext) {
     const formContext = executionContext.getFormContext();
     const account = formContext.getAttribute("cr4fd_fk_customer")?.getValue();
+
     if (filterPointer) {
-        alert("REMOVING PRESEARCH")
         formContext.getControl("cr4fd_fk_contact").removePreSearch(filterPointer);
     }
+
     if (account && account.length > 0) {
         // Set the filter function to apply the lookup filter
-        filterPointer = filterFunction.bind({ "accountId": account[0].id });
+        filterPointer = applyContactFilter.bind(null, executionContext, account[0].id);
         formContext.getControl("cr4fd_fk_contact").addPreSearch(filterPointer);
     }
-
 }
 
-function filterFunction(executionContext) {
+function applyContactFilter(executionContext, accountId) {
     const formContext = executionContext.getFormContext();
-    const accountId = this.accountId;
-    const conditions = 
-    `<link-entity name="cr4fd_my_position" from="cr4fd_fk_my_contact" to="cr4fd_my_contactid" link-type="inner" alias="aa">
-      <link-entity name="cr4fd_account" from="cr4fd_accountid" to="cr4fd_fk_my_account" link-type="inner" alias="ab">
-        <filter type="and">
-          <condition attribute="cr4fd_accountid" operator="eq" uitype="cr4fd_account" value="${accountId}" />
-        </filter>
-      </link-entity>
-    </link-entity>`
-    alert("ADDING FILTER")
-    formContext.getControl("cr4fd_fk_contact").addCustomFilter(conditions, "cr4fd_my_contact")
+    try {
+        const fetchXml = `
+        <fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="true">
+            <entity name="cr4fd_my_contact">
+                <attribute name="cr4fd_name" />
+                <attribute name="cr4fd_my_contactid" />
+                <link-entity name="cr4fd_my_position" from="cr4fd_fk_my_contact" to="cr4fd_my_contactid" alias="pos">
+                    <filter type="and">
+                        <condition attribute="cr4fd_fk_my_account" operator="eq" value="${accountId}" />
+                    </filter>
+                </link-entity>
+            </entity>
+        </fetch>`;
+
+        const layoutXml = `
+        <grid name="resultset" object="2" jump="cr4fd_my_contactid" select="1" icon="1" preview="1">
+            <row name="result" id="cr4fd_my_contactid">
+                <cell name="cr4fd_name" width="300" /> <!-- Display the name attribute -->
+            </row>
+        </grid>`;
+
+
+        const viewId = "{00000000-0000-0000-0000-000000000001}";
+        const entityName = "cr4fd_my_contact";
+        const viewDisplayName = "Filtered Contacts";
+        formContext.getControl("cr4fd_fk_contact").addCustomView(
+            viewId,
+            entityName,
+            viewDisplayName,
+            fetchXml,
+            layoutXml,
+            true
+        );
+    } catch (error) {
+        console.error("Error applying contact filter: ", error);
+    }
 }
