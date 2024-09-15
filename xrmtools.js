@@ -81,23 +81,27 @@ async function initPriceList(formContext) {
                 '<attribute name="cr4fd_name"/>' +
                 '<attribute name="cr4fd_mon_unit_price"/>' +
                 '<attribute name="cr4fd_mon_price_per_hour"/>' +
+                '<attribute name="transactioncurrencyid"/>' +
             '</entity>' +
         '</fetch>';
 
+
         const productResult = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_product', "?fetchXml=" + encodeURIComponent(productFetchXml));
-        
+        let exchangeRate = 1;
         if (productResult.entities.length > 0) {
             for (let i = 0; i < productResult.entities.length; i++) {
-                console.log(productResult.entities[i]);
                 const productId = productResult.entities[i].cr4fd_productid;
                 const productName = productResult.entities[i].cr4fd_name;
                 const defaultPrice = productResult.entities[i].cr4fd_mon_unit_price ? productResult.entities[i].cr4fd_mon_unit_price : productResult.entities[i].cr4fd_mon_price_per_hour;
-
+                const productCurrencyId = productResult.entities[i]._transactioncurrencyid_value;
+                if(productCurrencyId !== priceListCurrencyId){
+                    exchangeRate = await getRelativeExchangeRate(priceListCurrencyId, productCurrencyId);
+                }
                 // Create new Price List Item with currency from Price List and Default price of product
                 const priceListItemData = {
                     "cr4fd_fk_product@odata.bind": "/cr4fd_products(" + productId + ")",
                     "cr4fd_fk_price_list@odata.bind": "/cr4fd_price_lists(" + priceListId + ")",
-                    "cr4fd_mon_price": defaultPrice,
+                    "cr4fd_mon_price": defaultPrice * exchangeRate,
                     "transactioncurrencyid@odata.bind": "/transactioncurrencies(" + priceListCurrencyId+ ")", 
                     "cr4fd_name": productName 
                 };
@@ -112,6 +116,37 @@ async function initPriceList(formContext) {
         Xrm.Navigation.openAlertDialog({ text: "An error occurred while processing the Price List Items." });
     } finally {
         formContext.data.refresh();
+    }
+}
+
+
+
+// A function to get the exchange rate between two currencies. Not compared to the base currency.
+async function getRelativeExchangeRate(priceListCurrencyId, productCurrencyId) {
+    let fetchXml = `
+    <fetch>
+        <entity name="transactioncurrency">
+            <attribute name="transactioncurrencyid"/>
+            <attribute name="exchangerate"/>
+        <filter>
+            <condition attribute="transactioncurrencyid" operator="in">
+            <value>${priceListCurrencyId}</value>
+            <value>${productCurrencyId}</value>
+        </condition>
+        </filter>
+        </entity>
+    </fetch>`;
+    
+    try {
+        const result = await Xrm.WebApi.retrieveMultipleRecords("transactioncurrency", `?fetchXml=${encodeURIComponent(fetchXml)}`);
+        let exchangeRates = {};
+        result.entities.forEach(currency => {
+            exchangeRates[currency.transactioncurrencyid] = parseFloat(currency.exchangerate);
+        });
+        const relativeExchangeRate = exchangeRates[priceListCurrencyId] / exchangeRates[productCurrencyId];
+        return relativeExchangeRate;
+    } catch (err) {
+        console.error("Error: " + err.message);
     }
 }
 
