@@ -156,3 +156,78 @@ function applyProductFilter (formContext, inventoryId) {
 }
 
 
+async function autofillPricePerUnitAndCost(executionContext) {
+    const formContext = executionContext.getFormContext();
+
+    const productLookup = formContext.getAttribute("cr4fd_fk_product")?.getValue();
+    if (!productLookup) return;
+
+    const productId = productLookup[0].id.replace("{", "").replace("}","").toLowerCase();
+
+    const product = await Xrm.WebApi.retrieveRecord("cr4fd_product", productId, "?$select=cr4fd_mon_unit_price,_transactioncurrencyid_value,cr4fd_mon_cost");
+    if (!product) return;
+
+    const pricePerUnit = product.cr4fd_mon_unit_price;
+    const productCurrencyId = product._transactioncurrencyid_value;
+    const productCost = product.cr4fd_mon_cost;
+
+    if (productCurrencyId && pricePerUnit) {
+        formContext.getAttribute("transactioncurrencyid").setValue([{
+            id: productCurrencyId,
+            name: product["_transactioncurrencyid_value@OData.Community.Display.V1.FormattedValue"],
+            entityType: "transactioncurrency"
+        }]);
+        formContext.getAttribute("cr4fd_mon_price_per_unit").setValue(pricePerUnit);
+
+    }
+    if(productCost) {
+        formContext.getAttribute("cr4fd_mon_cost").setValue(productCost);
+    }
+}
+
+// Calculate total of work order products
+function calculateWorkOrderProductsAmount(executionContext) {
+    const formContext = executionContext.getFormContext();
+    const amountField = formContext.getAttribute("cr4fd_mon_total_amount");
+    const pricePerUnit = formContext.getAttribute("cr4fd_mon_price_per_unit")?.getValue();
+    const quantity = formContext.getAttribute("cr4fd_int_quantity")?.getValue();
+
+    if(pricePerUnit && quantity && amountField) {
+        amountField.setValue(pricePerUnit * quantity);
+    }
+}
+
+// Calculate total of work order services
+function calculateWorkOrderServicesAmount(executionContext) {
+    const formContext = executionContext.getFormContext();
+    const amountField = formContext.getAttribute("cr4fd_mon_total_amount");
+    const pricePerHour = formContext.getAttribute("cr4fd_mon_price_per_hour")?.getValue();
+    const durationMinutes = formContext.getAttribute("cr4fd_int_duration")?.getValue();
+    if(durationMinutes && pricePerHour && amountField) {
+        const totalAmount = pricePerHour * durationMinutes / 60;
+        amountField.setValue(totalAmount);
+    }
+}
+
+async function autofillPricePerHour(executionContext) {
+    const formContext = executionContext.getFormContext();
+    const serviceLookup = formContext.getAttribute("cr4fd_fk_service")?.getValue();
+    if (!serviceLookup) return;
+    const serviceId = serviceLookup[0].id.replace("{", "").replace("}","").toLowerCase();
+
+    const service = await Xrm.WebApi.retrieveRecord("cr4fd_product", serviceId, "?$select=cr4fd_mon_price_per_hour,_transactioncurrencyid_value");
+    if (!service) return;
+
+    const pricePerHour = service.cr4fd_mon_price_per_hour;
+    const serviceCurrencyId = service._transactioncurrencyid_value;
+
+    if (serviceCurrencyId && pricePerHour) {
+        formContext.getAttribute("transactioncurrencyid").setValue([{
+            id: serviceCurrencyId,
+            name: service["_transactioncurrencyid_value@OData.Community.Display.V1.FormattedValue"],
+            entityType: "transactioncurrency"
+        }]);
+        formContext.getAttribute("cr4fd_mon_price_per_hour").setValue(pricePerHour);
+
+    }
+}
