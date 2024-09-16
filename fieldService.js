@@ -231,3 +231,61 @@ async function autofillPricePerHour(executionContext) {
 
     }
 }
+
+// Autofill Inventory lookup field with one where selected product has the most quantity
+// in work order product
+async function autofillInventoryWithMaxQuantity(executionContext) {
+    const formContext = executionContext.getFormContext();
+    const productLookup = formContext.getAttribute("cr4fd_fk_product").getValue();
+    const inventoryField = formContext.getAttribute("cr4fd_fk_inventory");
+
+    if (!productLookup || inventoryField.getValue()) {
+        // If no product is selected or Inventory is not blank, do nothing
+        return;
+    }
+
+    const productId = productLookup[0].id.replace(/[{}]/g, "").toLowerCase();
+
+    const fetchXml = `
+    <fetch aggregate="true">
+      <entity name="cr4fd_inventory_product"> 
+        <attribute name="cr4fd_int_quantity" alias="max_quantity" aggregate="max" />
+        <attribute name="cr4fd_fk_inventory" alias="inventory_id" groupby="true" />
+        <filter>
+          <condition attribute="cr4fd_fk_product" operator="eq" value="${productId}" />
+        </filter>
+      </entity>
+    </fetch>`;
+
+    try {
+        const result = await Xrm.WebApi.retrieveMultipleRecords("cr4fd_inventory_product", `?fetchXml=${encodeURIComponent(fetchXml)}`);
+        if (result.entities.length > 0) {
+            let maxInventory = null;
+            let maxQuantity = -1
+
+            // Iterate through results to find the inventory with the maximum quantity
+            result.entities.forEach(entity => {
+                const quantity = parseFloat(entity["max_quantity"]);
+                if (quantity > maxQuantity) {
+                    maxQuantity = quantity;
+                    maxInventory = { 
+                        inventoryId: entity["inventory_id"], 
+                        inventoryName: entity["inventory_id@OData.Community.Display.V1.FormattedValue"]
+                    };
+                }
+            });
+            if (maxInventory) {
+                console.log(`Max Quantity: ${maxQuantity}, Inventory ID: ${maxInventory.inventoryId}`);
+                inventoryField.setValue([{
+                    id: maxInventory.inventoryId,
+                    name: maxInventory.inventoryName, 
+                    entityType: "cr4fd_inventory" 
+                }]);
+            }
+        } else {
+            console.log("No inventory found for the selected product.");
+        }
+    } catch (error) {
+        console.error("Error fetching max quantity:", error);
+    }
+}
