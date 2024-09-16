@@ -81,23 +81,27 @@ async function initPriceList(formContext) {
                 '<attribute name="cr4fd_name"/>' +
                 '<attribute name="cr4fd_mon_unit_price"/>' +
                 '<attribute name="cr4fd_mon_price_per_hour"/>' +
+                '<attribute name="transactioncurrencyid"/>' +
             '</entity>' +
         '</fetch>';
 
+
         const productResult = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_product', "?fetchXml=" + encodeURIComponent(productFetchXml));
-        
+        let exchangeRate = 1;
         if (productResult.entities.length > 0) {
             for (let i = 0; i < productResult.entities.length; i++) {
-                console.log(productResult.entities[i]);
                 const productId = productResult.entities[i].cr4fd_productid;
                 const productName = productResult.entities[i].cr4fd_name;
                 const defaultPrice = productResult.entities[i].cr4fd_mon_unit_price ? productResult.entities[i].cr4fd_mon_unit_price : productResult.entities[i].cr4fd_mon_price_per_hour;
-
+                const productCurrencyId = productResult.entities[i]._transactioncurrencyid_value;
+                if(productCurrencyId !== priceListCurrencyId){
+                    exchangeRate = await getRelativeExchangeRate(priceListCurrencyId, productCurrencyId);
+                }
                 // Create new Price List Item with currency from Price List and Default price of product
                 const priceListItemData = {
                     "cr4fd_fk_product@odata.bind": "/cr4fd_products(" + productId + ")",
                     "cr4fd_fk_price_list@odata.bind": "/cr4fd_price_lists(" + priceListId + ")",
-                    "cr4fd_mon_price": defaultPrice,
+                    "cr4fd_mon_price": defaultPrice * exchangeRate,
                     "transactioncurrencyid@odata.bind": "/transactioncurrencies(" + priceListCurrencyId+ ")", 
                     "cr4fd_name": productName 
                 };
@@ -115,3 +119,118 @@ async function initPriceList(formContext) {
     }
 }
 
+
+// A function to get the exchange rate between two currencies. Not compared to the base currency.
+async function getRelativeExchangeRate(priceListCurrencyId, productCurrencyId) {
+    let fetchXml = `
+    <fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">
+    <entity name="transactioncurrency">
+    <attribute name="transactioncurrencyid"/>
+    <attribute name="exchangerate"/>
+    <order attribute="currencyname" descending="false"/>
+    <filter type="and">
+    <condition attribute="transactioncurrencyid" operator="in">
+    <value uitype="transactioncurrency">${priceListCurrencyId}</value>
+    <value uitype="transactioncurrency">${productCurrencyId}</value>
+    </condition>
+    </filter>
+    </entity>
+    </fetch>`;
+    try {
+        const result = await Xrm.WebApi.retrieveMultipleRecords("transactioncurrency", `?fetchXml=${encodeURIComponent(fetchXml)}`);
+        let exchangeRates = {};
+        result.entities.forEach(currency => {
+            exchangeRates[currency.transactioncurrencyid] = parseFloat(currency.exchangerate);
+        });
+        const relativeExchangeRate = exchangeRates[priceListCurrencyId] / exchangeRates[productCurrencyId];
+        return relativeExchangeRate;
+    } catch (err) {
+        console.error("Error: " + err.message);
+    }
+}
+
+
+
+
+
+
+
+
+// Calculate total products amount in work order form
+async function calculateAmount(formContext) {
+    const productAmountField = formContext.getAttribute("cr4fd_mon_total_products_amount");
+    const serviceAmountField = formContext.getAttribute("cr4fd_mon_total_services_amount");
+    
+    const currencyId = formContext.getAttribute("transactioncurrencyid").getValue()[0].id.replace(/[{}]/g, "").toLowerCase();
+    const workOrderId = formContext.data.entity.getId().replace(/[{}]/g, "");
+    
+    let exchangeRate = 1;
+    
+    let productXml = `<fetch aggregate="true">
+        <entity name="cr4fd_work_order_product">
+            <attribute name="cr4fd_mon_total_amount" alias="totalamount_sum" aggregate="sum" />
+            <attribute name="transactioncurrencyid" alias="currency" groupby="true" />
+            <filter>
+            <condition attribute="cr4fd_fk_work_order" operator="eq" uitype="cr4fd_work_order" value="${workOrderId}" />
+            </filter>
+        </entity>
+    </fetch>`;
+    
+    productXml = `?fetchXml=${encodeURIComponent(productXml)}`;
+    
+    let serviceXml = `<fetch aggregate="true">
+        <entity name="cr4fd_workorderservice">
+            <attribute name="cr4fd_mon_total_amount" alias="totalamount_sum" aggregate="sum" />
+            <attribute name="transactioncurrencyid" alias="currency" groupby="true" />
+            <filter>
+            <condition attribute="cr4fd_fk_work_order" operator="eq" uitype="cr4fd_work_order" value="${workOrderId}" />
+            </filter>
+        </entity>
+    </fetch>`;
+    
+    serviceXml = `?fetchXml=${encodeURIComponent(serviceXml)}`;
+    
+    try {
+        const responseProducts = await Xrm.WebApi.retrieveMultipleRecords("cr4fd_work_order_product", productXml);
+        if (responseProducts.entities.length > 0 && productAmountField) {
+            if (currencyId) {
+                exchangeRate = await getExchangeRate(currencyId);
+            }
+            const totalAmountSum = responseProducts.entities[0]["totalamount_sum"] * exchangeRate;
+            productAmountField.setValue(totalAmountSum);
+        } else {
+            console.log("No product records found.");
+            productAmountField.setValue(null);
+        }
+    } catch (error) {
+        console.error("Error while retrieving product sum:", error);
+    }
+
+    try {
+        const responseService = await Xrm.WebApi.retrieveMultipleRecords("cr4fd_workorderservice", serviceXml);
+        if (responseService.entities.length > 0 && serviceAmountField) {
+            if (currencyId) {
+                exchangeRate = await getExchangeRate(currencyId);
+            }
+            const totalAmountSum = responseService.entities[0]["totalamount_sum"] * exchangeRate;
+            serviceAmountField.setValue(totalAmountSum);
+        } else {
+            console.log("No service records found.");
+            serviceAmountField.setValue(null);
+        }
+    } catch (error) {
+        console.error("Error while retrieving services sum:", error);
+    }
+}
+
+
+// get exchange rate with base currency
+async function getExchangeRate(currencyId) {
+    try {
+        const result = await Xrm.WebApi.retrieveRecord("transactioncurrency", currencyId, "?$select=exchangerate");
+        return parseFloat(result.exchangerate);
+    } catch (error) {
+        console.error("Error retrieving exchange rate: ", error);
+        return 0; // Fallback to 1 if something goes wrong (no conversion)
+    }
+}

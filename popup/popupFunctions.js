@@ -1,10 +1,19 @@
 window.onload = async (event) => {
-    let fetchXml = '<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">' +
-        '<entity name="cr4fd_product">' +
-        '<attribute name="cr4fd_name" />' +
-        '<attribute name="cr4fd_productid" />' +
-        '</entity>' +
-        '</fetch>';
+    // fetch products and asset products only
+    let fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">
+        <entity name="cr4fd_product">
+            <attribute name="cr4fd_productid"/>
+            <attribute name="cr4fd_name"/>
+            <attribute name="createdon"/>
+        <order attribute="cr4fd_name" descending="false"/>
+        <filter type="and">
+            <condition attribute="cr4fd_os_type" operator="in">
+                <value>903020002</value> 
+                <value>903020000</value>
+            </condition>
+        </filter>
+        </entity>
+    </fetch>`
     
     fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
     let products = await parent.Xrm.WebApi.retrieveMultipleRecords('cr4fd_product', fetchXml);
