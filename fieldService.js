@@ -289,3 +289,20 @@ async function autofillInventoryWithMaxQuantity(executionContext) {
         console.error("Error fetching max quantity:", error);
     }
 }
+
+
+async function autofillWorkOrderNumber(executionContext) {
+    const formContext = executionContext.getFormContext();
+    if(formContext.ui.getFormType() !== 1) return; // work only with create form
+    // Fetch work orders to determine the global counter
+    await Xrm.WebApi.retrieveMultipleRecords("cr4fd_work_order", "?$orderby=createdon desc").then(
+        function success(result) {
+            const newCounter = ("000" + (result.entities.length + 1)).slice(-3); 
+            const workOrderName = `WO-${newCounter}`;
+            formContext.getAttribute("cr4fd_name").setValue(workOrderName);
+        },
+        function error(error) {
+            console.error(error.message);
+        }
+    );    
+}
