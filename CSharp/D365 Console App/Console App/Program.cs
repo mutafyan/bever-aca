@@ -12,14 +12,13 @@ namespace D365
     {
         static void Main(string[] args)
         {
-            // Logger logger = new Logger();
             string inventoryName, productName, operationType;
             int quantity;
             try
             {
                 D365Connector d365Connector = new D365Connector(
-                    "Login", 
-                    "Password", 
+                    "LOGIN", 
+                    "PASSWORD", 
                     "URL"
                 );
                 Console.WriteLine("Successfully connected to D365");

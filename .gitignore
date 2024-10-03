@@ -1,0 +1,42 @@
+legacy/
+spkl_deployment/
+
+# Inside CSharp, ignore everything
+/CSharp/D365 Console App
+!/CSharp/D365 Console App/Console App/Program.cs
+/CSharp/.vs
+
+/CSharp/D365 Assemblies/
+!CSharp/D365 Assemblies/InventoryManagement/Class1.cs
+
+
+# # Ignore Visual Studio specific files
+# [Cc]ore/
+# [Dd]ebug/
+# [Rr]elease/
+# x64/
+# x86/
+# build/
+# bld/
+# [Bb]in/
+# [Oo]bj/
+# [Ll]og/
+# [Ll]ogs/
+# [Tt]est[Rr]esult*/
+# *.iobj
+# *.ipdb
+# *.pdb
+# *.user
+# *.suo
+# *.cache
+# *.sdf
+# *.opensdf
+# *.unsuccessfulbuild
+# *.VC.db
+# *.VC.VC.opendb
+
+# # Ignore temporary files
+# *.tmp
+# *.temp
+# *.tlog
+
