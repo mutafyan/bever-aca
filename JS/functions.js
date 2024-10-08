@@ -11,7 +11,7 @@ function changeName (executionContext) {
 
 function hideBasedOnType (executionContext) {
 	const Form = executionContext.getFormContext();
-	const option = Form.getAttribute("cr4fd_os_type").getSelectedOption().text;
+	const option = Form.getAttribute("cr4fd_os_type").getText();
 	if(option && option === "Service") {
 		Form.getControl("cr4fd_mon_unit_price").setVisible(false);
 		Form.getControl("cr4fd_mon_price_per_hour").setVisible(true);		
