@@ -8,15 +8,18 @@ function disableFieldsOnClosePosted(executionContext) {
     if (statusField) {
         const statusValue = statusField.getValue();
         const closePostedValue = 903020000;
-        if (statusValue === closePostedValue) {
-            // disable all fields except the status field
+        const warningMessage = "Close-posting will irrevocably generate billing and subtract product quantities needed for this work order";
+        if(statusValue !== closePostedValue) {
+            formContext.ui.setFormNotification(warningMessage, "INFO", "info1");
+        }
+        else {
+            // disable all fields 
             disableAllFields(formContext);
             // disable related subgrids to prevent adding new records
             disableSubgrids(formContext);
-        } else {
-            // re-enable fields if status changes from "close-posted"
-            enableAllFields(formContext);
-            enableSubgrids(formContext);
+            // Clear info notification
+            formContext.ui.clearFormNotification("info1");
+        
         }
     }
 }
@@ -36,25 +39,9 @@ function disableAllFields(formContext) {
             }
         }
     });
-    // enable the status field
-    formContext.getControl(statusFieldName)?.setDisabled(true);
 }
 
-/**
- * Enables all fields on the given form
- */
-function enableAllFields(formContext) {
-    const statusFieldName = "cr4fd_os_status";
-    
-    const controls = formContext.ui.controls.get();
-    
-    // Iterate over each control and enable it
-    controls.forEach(control => {
-        if (control && typeof control.setDisabled === "function") {
-            control.setDisabled(false);      
-        }
-    });
-}
+
 
 /**
  * Disables related subgrid controls on the main Work Order form to prevent adding new records.
@@ -71,19 +58,6 @@ function disableSubgrids(formContext) {
     });
 }
 
-/**
- * Enables related subgrid controls on the main Work Order form.
- */
-function enableSubgrids(formContext) {
-    const subgridNames = ["wo_products", "wo_services", "wo_bookings"];
-    
-    subgridNames.forEach(subgridName => {
-        let subgridControl = formContext.getControl(subgridName);
-        if (subgridControl) {
-            subgridControl.setDisabled(false);
-        }
-    });
-}
 
 
 /**
@@ -114,5 +88,33 @@ function disableFieldsIfParentClosePosted(executionContext) {
                 }
             );
         }
+    }
+}
+
+/**
+ * Leaves only one lookup field visible in invoice line form
+ * either to work order product or to work order service
+ */
+function controlLookupVisibility(executionContext) {
+    var formContext = executionContext.getFormContext();
+
+    var workOrderProductField = formContext.getAttribute("cr4fd_fk_work_order_product");
+    var workOrderServiceField = formContext.getAttribute("cr4fd_fk_workorderservice");
+
+    var workOrderProductControl = formContext.getControl("cr4fd_fk_work_order_product");
+    var workOrderServiceControl = formContext.getControl("cr4fd_fk_workorderservice");
+
+    if (workOrderProductField.getValue() != null) {
+        // Hide Work Order Service lookup when Work Order Product has a value
+        workOrderServiceControl.setVisible(false);
+    } else {
+        workOrderServiceControl.setVisible(true);
+    }
+
+    if (workOrderServiceField.getValue() != null) {
+        // Hide Work Order Product lookup when Work Order Service has a value
+        workOrderProductControl.setVisible(false);
+    } else {
+        workOrderProductControl.setVisible(true);
     }
 }
