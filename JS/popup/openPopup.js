@@ -1,10 +1,13 @@
 function openInventoryProductPopup(formContext) {
+    if(formContext.ui.getFormType() === "1") {
+        return;
+    }
     const inventoryId = formContext.data.entity.getId();
     if(!inventoryId) {
-        alert("NO ID")
+        alert("NO ID");
+        return;
     }
     
-    console.log(inventoryId);
     let pageInput = 
     {
         pageType: "webresource",

@@ -17,11 +17,11 @@ namespace InventoryManagement
             {
                 Entity inventoryProduct = (Entity)context.InputParameters["Target"];
 
-                if (!inventoryProduct.Contains("cr4fd_fk_inventory") || !inventoryProduct.Contains("cr4fd_fk_product"))
-                    return; // Exit if no inventory or product is linked.
+                    if (!inventoryProduct.Contains("cr4fd_fk_inventory") || !inventoryProduct.Contains("cr4fd_fk_product"))
+                        return; // Exit if no inventory or product is linked.
 
-                EntityReference inventoryRef = inventoryProduct.GetAttributeValue<EntityReference>("cr4fd_fk_inventory");
-                EntityReference productRef = inventoryProduct.GetAttributeValue<EntityReference>("cr4fd_fk_product");
+                    EntityReference inventoryRef = inventoryProduct.GetAttributeValue<EntityReference>("cr4fd_fk_inventory");
+                    EntityReference productRef = inventoryProduct.GetAttributeValue<EntityReference>("cr4fd_fk_product");
 
                 try
                 {
@@ -34,22 +34,22 @@ namespace InventoryManagement
                     if (productName == null)
                         return;
                     inventoryProduct["cr4fd_name"] = productName;
-
+                    
                     // get the associated currency of inventory
                     EntityReference inventoryCurrencyRef = GetCurrencyOfInventory(service, inventoryRef);
                     if (inventoryCurrencyRef == null)
-                        return;
+                        return; 
                     inventoryProduct["transactioncurrencyid"] = inventoryCurrencyRef;
 
                     // Get price per unit from Product
                     Money productPrice = GetProductPrice(service, productRef);
                     if (productPrice == null)
-                        return;
+                        return; 
 
                     // Get the currency of the Product
                     EntityReference productCurrencyRef = GetCurrencyOfProduct(service, productRef);
                     if (productCurrencyRef == null)
-                        return;
+                        return; 
 
                     // Convert product price to Inventory's currency using exchange rate
                     decimal convertedPrice = ConvertPriceToInventoryCurrency(service, productPrice.Value, productCurrencyRef.Id, inventoryCurrencyRef.Id);

@@ -271,3 +271,38 @@ async function checkProductAssociation(executionContext) {
 		}
 	}
 }
+
+
+// set inventory currency from selected price list
+function setInventoryCurrency(executionContext) {
+    const formContext = executionContext.getFormContext();
+
+    const priceListField = formContext.getAttribute("cr4fd_fk_price_list").getValue();
+
+    if (priceListField === null) {
+		formContext.getAttribute("transactioncurrencyid").setValue(null);
+		return;
+	};
+
+	const priceListId = priceListField[0].id.replace('{', '').replace('}', '').toLowerCase();
+
+	// Retrieve the Price List record to get the associated currency
+	Xrm.WebApi.retrieveRecord("cr4fd_price_list", priceListId).then(
+		function success(result) {
+			const currency = [{
+				id: result["_transactioncurrencyid_value"],
+				name: result["_transactioncurrencyid_value@OData.Community.Display.V1.FormattedValue"],
+				entityType: "transactioncurrency"
+			}]
+			
+            if (currency) {
+				// Set the currency field on the Inventory form
+				formContext.getAttribute("transactioncurrencyid").setValue(currency);
+			}
+		},
+		function (error) {
+			console.error("Error retrieving Price List currency: " + error.message);
+		}
+	);
+    
+}
