@@ -118,3 +118,46 @@ function controlLookupVisibility(executionContext) {
         workOrderProductControl.setVisible(true);
     }
 }
+
+
+/*
+ * Function called on ribbon button click
+ * Calls an action that generates new actuals for a work order
+ */
+async function generateNewActuals(formContext) {
+    const workOrderId = formContext.data.entity.getId().replace('{', '').replace('}', '');
+
+    // Define the request action parameters
+    const requestAction = {
+        "WorkOrder": {
+            id: workOrderId,
+            entityType: "cr4fd_work_order"
+        },
+ 
+        getMetadata: function () {
+            return {
+                boundParameter: null,
+                parameterTypes: {
+                    "WorkOrder": {
+                        typeName: "mscrm.cr4fd_work_order", 
+                        structuralProperty: 5 
+                    }
+                },
+                operationType: 0, 
+                operationName: "cr4fd_CreateNewActualsforWorkOrderAction" 
+            };
+        }
+    };
+
+    const result = await Xrm.WebApi.online.execute(requestAction);
+    if (result.ok) {
+        const response = await result.json();
+        const status = response.Status;
+        console.log("Action executed successfully. Status: " + status);
+        // display a message to the user
+        Xrm.Navigation.openAlertDialog({ text: "Actuals generated successfully." });
+    } else {
+        console.error("Error executing action: ", result.statusText);
+        Xrm.Navigation.openErrorDialog({ message: "Error executing action: " + result.statusText });
+    }
+}
