@@ -94,23 +94,25 @@ namespace WorkOrderManagement
         {
             string entityName = "cr4fd_workorderservice";
             string invoiceLineLookupField = "cr4fd_fk_workorderservice";
+            string productLookupName = "cr4fd_fk_service";
             if (isProduct)
             {
                 entityName = "cr4fd_work_order_product";
                 invoiceLineLookupField = "cr4fd_fk_work_order_product";
+                productLookupName = "cr4fd_fk_product";
             }
 
             // Build query to retrieve related entities (products or services)
             QueryExpression query = new QueryExpression(entityName)
             {
-                ColumnSet = new ColumnSet("cr4fd_name", "cr4fd_mon_total_amount")
+                ColumnSet = new ColumnSet(productLookupName, "cr4fd_mon_total_amount")
             };
             query.Criteria.AddCondition("cr4fd_fk_work_order", ConditionOperator.Equal, workOrder.Id);
 
             EntityCollection entities = service.RetrieveMultiple(query);
-
             foreach (Entity entity in entities.Entities)
             {
+                string productName = GetProductName(service, entity.GetAttributeValue<EntityReference>(productLookupName));
                 // invoice line name set to product name (removed autonumbering)
                 Entity invoiceLine = new Entity("cr4fd_invoice_line")
                 {
@@ -118,7 +120,7 @@ namespace WorkOrderManagement
                     [invoiceLineLookupField] = new EntityReference(entityName, entity.Id),
                     ["cr4fd_mon_total_amount"] = entity.GetAttributeValue<Money>("cr4fd_mon_total_amount"),
                     ["transactioncurrencyid"] = invoice.GetAttributeValue<EntityReference>("transactioncurrencyid"),
-                    ["cr4fd_name"] = entity.GetAttributeValue<string>("cr4fd_name")
+                    ["cr4fd_name"] = productName
                 };
 
                 Guid invoiceLineId = service.Create(invoiceLine);
@@ -126,5 +128,10 @@ namespace WorkOrderManagement
             }
         }
 
+        private string GetProductName(IOrganizationService service, EntityReference productRef)
+        {
+            Entity product = service.Retrieve("cr4fd_product", productRef.Id, new ColumnSet("cr4fd_name"));
+            return product.GetAttributeValue<string>("cr4fd_name");
+        }
     }
 }
