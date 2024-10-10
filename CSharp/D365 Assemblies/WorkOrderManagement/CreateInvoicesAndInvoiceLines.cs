@@ -29,7 +29,16 @@ namespace WorkOrderManagement
             try
             {
                 // Retrieve the Work Order entity
-                Entity workOrder = service.Retrieve(workOrderRef.LogicalName, workOrderRef.Id, new ColumnSet("cr4fd_name", "cr4fd_fk_customer", "cr4fd_fk_price_list", "transactioncurrencyid", "cr4fd_mon_total_products_amount", "cr4fd_mon_total_services_amount"));
+                Entity workOrder = service.Retrieve(workOrderRef.LogicalName, workOrderRef.Id, 
+                    new ColumnSet(
+                        "cr4fd_name", 
+                        "cr4fd_fk_customer",
+                        "cr4fd_fk_contact",
+                        "cr4fd_fk_price_list", 
+                        "transactioncurrencyid", 
+                        "cr4fd_mon_total_products_amount", 
+                        "cr4fd_mon_total_services_amount",
+                        "cr4fd_mlot_description_of_work"));
 
                 // Generate the Invoice
                 Entity invoice = GenerateInvoice(service, workOrderRef, workOrder);
@@ -49,15 +58,17 @@ namespace WorkOrderManagement
             decimal totalProductsAmount = workOrder.GetAttributeValue<Money>("cr4fd_mon_total_products_amount")?.Value ?? 0;
             decimal totalServicesAmount = workOrder.GetAttributeValue<Money>("cr4fd_mon_total_services_amount")?.Value ?? 0;
             decimal totalAmount = totalProductsAmount + totalServicesAmount;
-
+            string name = workOrder.GetAttributeValue<string>("cr4fd_name")?.Replace("WO-", "INV-");
             Entity invoice = new Entity("cr4fd_invoice")
             {
-                ["cr4fd_name"] = "INV-" + workOrder.GetAttributeValue<string>("cr4fd_name"),
+                ["cr4fd_name"] = name,
                 ["cr4fd_fk_work_order"] = workOrderRef,
                 ["cr4fd_fk_customer"] = workOrder.GetAttributeValue<EntityReference>("cr4fd_fk_customer"),
+                ["cr4fd_fk_my_contact"] = workOrder.GetAttributeValue<EntityReference>("cr4fd_fk_contact"),
                 ["cr4fd_fk_price_list"] = workOrder.GetAttributeValue<EntityReference>("cr4fd_fk_price_list"),
                 ["transactioncurrencyid"] = workOrder.GetAttributeValue<EntityReference>("transactioncurrencyid"),
-                ["cr4fd_mon_total_amount"] = new Money(totalAmount)
+                ["cr4fd_mon_total_amount"] = new Money(totalAmount),
+                ["cr4fd_mlot_description_of_work"] = workOrder.GetAttributeValue<string>("cr4fd_mlot_description_of_work"),
             };
 
             Guid invoiceId = service.Create(invoice);
@@ -83,43 +94,44 @@ namespace WorkOrderManagement
         {
             string entityName = "cr4fd_workorderservice";
             string invoiceLineLookupField = "cr4fd_fk_workorderservice";
+            string productLookupName = "cr4fd_fk_service";
             if (isProduct)
             {
                 entityName = "cr4fd_work_order_product";
                 invoiceLineLookupField = "cr4fd_fk_work_order_product";
+                productLookupName = "cr4fd_fk_product";
             }
 
             // Build query to retrieve related entities (products or services)
             QueryExpression query = new QueryExpression(entityName)
             {
-                ColumnSet = new ColumnSet("cr4fd_mon_total_amount")
+                ColumnSet = new ColumnSet(productLookupName, "cr4fd_mon_total_amount")
             };
             query.Criteria.AddCondition("cr4fd_fk_work_order", ConditionOperator.Equal, workOrder.Id);
 
             EntityCollection entities = service.RetrieveMultiple(query);
-
-            int lineNumber = 1; 
-
             foreach (Entity entity in entities.Entities)
             {
-                // Generate name
-                string type = isProduct ? "PROD" : "SER";
-                string name = $"{invoice.GetAttributeValue<string>("cr4fd_name")}-{type}-{lineNumber:D3}";
-                // Create a new Invoice Line
+                string productName = GetProductName(service, entity.GetAttributeValue<EntityReference>(productLookupName));
+                // invoice line name set to product name (removed autonumbering)
                 Entity invoiceLine = new Entity("cr4fd_invoice_line")
                 {
                     ["cr4fd_fk_invoice"] = new EntityReference(invoice.LogicalName, invoice.Id),
                     [invoiceLineLookupField] = new EntityReference(entityName, entity.Id),
                     ["cr4fd_mon_total_amount"] = entity.GetAttributeValue<Money>("cr4fd_mon_total_amount"),
                     ["transactioncurrencyid"] = invoice.GetAttributeValue<EntityReference>("transactioncurrencyid"),
-                    ["cr4fd_name"] = name
+                    ["cr4fd_name"] = productName
                 };
 
                 Guid invoiceLineId = service.Create(invoiceLine);
                 tracingService.Trace("Created Invoice Line ID: {0} for {1} ID: {2}", invoiceLineId, entityName, entity.Id);
-                lineNumber++; // Increment line number for next line
             }
         }
 
+        private string GetProductName(IOrganizationService service, EntityReference productRef)
+        {
+            Entity product = service.Retrieve("cr4fd_product", productRef.Id, new ColumnSet("cr4fd_name"));
+            return product.GetAttributeValue<string>("cr4fd_name");
+        }
     }
 }
