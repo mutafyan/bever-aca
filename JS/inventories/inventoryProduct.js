@@ -1,46 +1,43 @@
-// TODO: work on logic
+// Works with inventory product form fields,
+// disabling and hiding them as needed
 function toggleFieldsBasedOnFormType(executionContext) {
-	const Form = executionContext.getFormContext();
-    let formType = Form.ui.getFormType();
-	const allControls = Form.ui.controls.get();
-	const hideOnCreate = [
-		"cr4fd_name",
-		"transactioncurrencyid",
-		"cr4fd_mon_total_amount",
-		"cr4fd_mon_price_per_unit"
-	]
-	
-    // Iterate over each control and disable
-    if(formType === 2) {
-		allControls.forEach(function(control) {
-        if (control) {
-            control.setDisabled(true);
-        }
-    	}) 
-	}
-	// Hide unnecesarry fields when creating new record 
-	else if(formType === 1) { 
-		// enable the fields
-		allControls.forEach(function(control) {
-		if (control) {
-			control.setDisabled(false);
-		}
-		})
-		// disable and hide those that are not neccessary
-		hideOnCreate.forEach(function(fieldName) {
-			const control = Form.getControl(fieldName);
-			if(control){
-				control.setVisible(false);
-				control.setDisabled(true);
-			}
-		});
+    const formContext = executionContext.getFormContext();
+    const formType = formContext.ui.getFormType();
+    const allControls = formContext.ui.controls.get();
+    // show on create, everything else is autopopulated
+    const fieldsToShowOnCreate = [
+        "cr4fd_fk_inventory",
+        "cr4fd_fk_product",
+        "cr4fd_int_quantity"
+    ];
 
-		// disable the product field
-		const product = Form.getControl("cr4fd_fk_product");
-		if(product) {
-			product.setDisabled(true);	
-		}
-	} 
+    if (formType === 1) { // Create 
+        // Hide all 
+        allControls.forEach(function (control) {
+            control.setVisible(false);
+        });
+
+        // Show and enable required ones
+        fieldsToShowOnCreate.forEach(function (fieldName) {
+            const control = formContext.getControl(fieldName);
+            if (control) {
+                control.setVisible(true);
+                control.setDisabled(false);
+            }
+        });
+
+        // Disable the product field promting the user to select inventory first
+        // The field gets enabled after inventory is selected
+        const productControl = formContext.getControl("cr4fd_fk_product");
+        if (productControl) {
+            productControl.setDisabled(true);
+        }
+    } else if (formType === 2) { // Existing
+        // Disable all controls to prevent editing
+        allControls.forEach(function (control) {
+            control.setDisabled(true);
+        });
+    }
 }
 
 // Calculates and sets total amount 
