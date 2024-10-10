@@ -1,34 +1,4 @@
-function changeName (executionContext) {
-	const Form = executionContext.getFormContext();
-	let name = "";
-	const lookup = Form.getAttribute("cr4fd_fk_product").getValue();
-	if(lookup) {
-		name = lookup[0]?.name;
-	}
-	Form.getAttribute("cr4fd_name").setValue(name);
-}
-
-
-function hideBasedOnType (executionContext) {
-	const Form = executionContext.getFormContext();
-	const option = Form.getAttribute("cr4fd_os_type").getText();
-	if(option && option === "Service") {
-		Form.getControl("cr4fd_mon_unit_price").setVisible(false);
-		Form.getControl("cr4fd_mon_price_per_hour").setVisible(true);		
-	} else {
-		Form.getControl("cr4fd_mon_price_per_hour").setVisible(false);		
-		Form.getControl("cr4fd_mon_unit_price").setVisible(true);
-	}
-	
-}
-
-function totalAmount(executionContext) {
-	const Form = executionContext.getFormContext();
-	const pricePerUnit = Form.getAttribute("cr4fd_mon_price_per_unit").getValue();
-	const quantity = Form.getAttribute("cr4fd_int_quantity").getValue();
-	Form.getAttribute("cr4fd_mon_total_amount").setValue(pricePerUnit*quantity);
-}
-
+// TODO: work on logic
 function toggleFieldsBasedOnFormType(executionContext) {
 	const Form = executionContext.getFormContext();
     let formType = Form.ui.getFormType();
@@ -70,48 +40,18 @@ function toggleFieldsBasedOnFormType(executionContext) {
 		if(product) {
 			product.setDisabled(true);	
 		}
-	} else {
-		// pass
-	}
+	} 
 }
 
-
-function autofillName(executionContext) {
+// Calculates and sets total amount 
+function totalAmount(executionContext) {
 	const Form = executionContext.getFormContext();
-	if(Form.ui.getFormType() === 1) {
-		return;
-	}
-	const productName = Form.getAttribute("cr4fd_fk_product")?.getValue()[0]?.name;
-	Form.getAttribute("cr4fd_name").setValue(productName);
+	const pricePerUnit = Form.getAttribute("cr4fd_mon_price_per_unit").getValue();
+	const quantity = Form.getAttribute("cr4fd_int_quantity").getValue();
+	Form.getAttribute("cr4fd_mon_total_amount").setValue(pricePerUnit*quantity);
 }
 
-async function autofillCurrency(executionContext) {
-    const Form = executionContext.getFormContext();
-    const priceListField = Form.getAttribute("cr4fd_fk_price_list");
-    const currencyField = Form.getAttribute("transactioncurrencyid");
-
-    if (priceListField && priceListField.getValue()) {
-        const priceListId = priceListField.getValue()[0].id.replace("{","").replace("}","").toLowerCase();
-        await Xrm.WebApi.retrieveRecord("cr4fd_price_list", priceListId, "?$select=_transactioncurrencyid_value").then(
-			function success(result) {
-				const newCurrency = {
-					id: result["_transactioncurrencyid_value"], 
-					name: result["_transactioncurrencyid_value@OData.Community.Display.V1.FormattedValue"],
-					entityType: "transactioncurrency"
-				};
-				currencyField.setValue([newCurrency]);
-            },
-            function error(error) {
-                console.log("Error retrieving currency from Price List:", error.message);
-            }
-        );
-    } else {
-        // Clear the currency field if no Price List is selected
-        currencyField.setValue(null);
-    }
-}
-
-
+// Retrieves and sets inventory product currency from related inventory's price list
 async function autofillCurrencyForInventoryProducts(executionContext) {
 	const Form = executionContext.getFormContext();
 	if(Form.ui.getFormType() === 1) {
@@ -139,27 +79,25 @@ async function autofillCurrencyForInventoryProducts(executionContext) {
 		'</link-entity>'+
         '</entity>' +
         '</fetch>';
-	    fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
+    fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
 
-		try {
-			const resultArray = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
-			if(resultArray) {
-				const result = resultArray.entities[0];
-				const currencyObj = {
-					id: result["am.transactioncurrencyid"],
-					name: result["am.transactioncurrencyid@OData.Community.Display.V1.FormattedValue"],
-					entityType: result["am.transactioncurrencyid@Microsoft.Dynamics.CRM.lookuplogicalname"],
-				}
-				currencyField.setValue([currencyObj]);
-			}
-			} catch (error) {
-			console.error(error);
-		}
-
+		
+    const resultArray = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
+    if(resultArray) {
+        const result = resultArray.entities[0];
+        const currencyObj = {
+            id: result["am.transactioncurrencyid"],
+            name: result["am.transactioncurrencyid@OData.Community.Display.V1.FormattedValue"],
+            entityType: result["am.transactioncurrencyid@Microsoft.Dynamics.CRM.lookuplogicalname"],
+        }
+        currencyField.setValue([currencyObj]);
+    }
+		
 }
 
 
-
+// Set price per unit in inventory product from corresponding price list item
+// if not present -> set price from product record
 function setPricePerUnit(executionContext) {
     const Form = executionContext.getFormContext();
 
@@ -216,8 +154,22 @@ function setPricePerUnit(executionContext) {
     }
 }
 
+// Set name of product from lookup
+function changeName (executionContext) {
+	const Form = executionContext.getFormContext();
+	let name = "";
+	const lookup = Form.getAttribute("cr4fd_fk_product").getValue();
+	if(lookup) {
+		name = lookup[0]?.name;
+	}
+	Form.getAttribute("cr4fd_name").setValue(name);
+}
 
 
+/**
+ * Check for existing inventory product with selected inventory and product
+ * if exist -> display error message on product field
+ */
 async function checkProductAssociation(executionContext) {
 	const formContext = executionContext.getFormContext();
     const inventory = formContext.getAttribute("cr4fd_fk_inventory").getValue();
@@ -238,71 +190,35 @@ async function checkProductAssociation(executionContext) {
 		'</entity>' +
 		'</fetch>';
 		fetchXml = "?fetchXml=" + encodeURIComponent(fetchXml);
-		try {
-			const result = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
-			
-			if (result.entities.length > 0) {
-				// Product is already associated with the inventory
-				formContext.getControl("cr4fd_fk_product").setNotification("Product is already added", "product_notification");
-			} else {
-				// Clear the notification if no matching product-inventory is found
-				formContext.getControl("cr4fd_fk_product").clearNotification("product_notification");
-			}
-		} catch (error) {
-			console.error("Error checking product association:", error);
-		}
+		
+        const result = await Xrm.WebApi.retrieveMultipleRecords('cr4fd_inventory_product', fetchXml);
+        
+        if (result.entities.length > 0) {
+            // Product is already associated with the inventory
+            formContext.getControl("cr4fd_fk_product").setNotification("Product is already added", "product_notification");
+        } else {
+            // Clear the notification if no matching product-inventory is found
+            formContext.getControl("cr4fd_fk_product").clearNotification("product_notification");
+        }
+		
 	}
-	}
+}
 	
-	function enableProductField(executionContext) {
-		const formContext = executionContext.getFormContext();
-		let formType = formContext.ui.getFormType();
-		if(formType === 1) { 
-			productField = formContext.getControl("cr4fd_fk_product");
-			inventoryField = formContext.getAttribute("cr4fd_fk_inventory");
-			if(inventoryField.getValue()) {
-			if(productField) {
-				// Disable if true
-				formContext.getControl("cr4fd_fk_inventory").clearNotification("inventory_notification");
-				productField.setDisabled(false);
-			}
-		} else {
-			formContext.getControl("cr4fd_fk_inventory").setNotification("Choose an inventory", "inventory_notification");
-		}
-	}
-}
-
-
-// set inventory currency from selected price list
-function setInventoryCurrency(executionContext) {
+// Enable product field after inventory is selected
+function enableProductField(executionContext) {
     const formContext = executionContext.getFormContext();
-
-    const priceListField = formContext.getAttribute("cr4fd_fk_price_list").getValue();
-
-    if (priceListField === null) {
-		formContext.getAttribute("transactioncurrencyid").setValue(null);
-		return;
-	};
-
-	const priceListId = priceListField[0].id.replace('{', '').replace('}', '').toLowerCase();
-
-	// Retrieve the Price List record to get the associated currency
-	Xrm.WebApi.retrieveRecord("cr4fd_price_list", priceListId).then(
-		function success(result) {
-			const currency = [{
-				id: result["_transactioncurrencyid_value"],
-				name: result["_transactioncurrencyid_value@OData.Community.Display.V1.FormattedValue"],
-				entityType: "transactioncurrency"
-			}]
-			
-            if (currency) {
-				// Set the currency field on the Inventory form
-				formContext.getAttribute("transactioncurrencyid").setValue(currency);
-			}
-		},
-		function (error) {
-			console.error("Error retrieving Price List currency: " + error.message);
-		}
-	);
-    
+    let formType = formContext.ui.getFormType();
+    if(formType === 1) { 
+        productField = formContext.getControl("cr4fd_fk_product");
+        inventoryField = formContext.getAttribute("cr4fd_fk_inventory");
+        if(inventoryField.getValue()) {
+        if(productField) {
+            // Disable if true
+            formContext.getControl("cr4fd_fk_inventory").clearNotification("inventory_notification");
+            productField.setDisabled(false);
+        }
+    } else 
+        formContext.getControl("cr4fd_fk_inventory").setNotification("Choose an inventory", "inventory_notification");
+    }
 }
+
